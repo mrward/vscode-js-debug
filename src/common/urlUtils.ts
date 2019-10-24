@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { URL } from 'url';
+import { URL, fileURLToPath } from 'url';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fixDriveLetterAndSlashes } from './pathUtils';
@@ -139,6 +139,34 @@ export function fileUrlToAbsolutePath(urlOrPath: string): string | undefined {
   return fixDriveLetterAndSlashes(urlOrPath);
 }
 
+
+/**
+ * Modify a url/path either from the client or the target to a common format for comparing.
+ * The client can handle urls in this format too.
+ * file:///D:\\scripts\\code.js => d:/scripts/code.js
+ * file:///Users/me/project/code.js => /Users/me/project/code.js
+ * c:/scripts/code.js => c:\\scripts\\code.js
+ * http://site.com/scripts/code.js => (no change)
+ * http://site.com/ => http://site.com
+ */
+export function canonicalizeUrl(urlOrPath: string): string {
+  if (!urlOrPath) {
+      return urlOrPath;
+  }
+  urlOrPath = fileURLToPath(urlOrPath);
+
+  // Remove query params
+  if (urlOrPath.indexOf('?') >= 0) {
+      urlOrPath = urlOrPath.split('?')[0];
+  }
+
+  urlOrPath = stripTrailingSlash(urlOrPath);
+  urlOrPath = fixDriveLetterAndSlashes(urlOrPath);
+  urlOrPath = normalizeIfFSIsCaseInsensitive(urlOrPath);
+
+  return urlOrPath;
+}
+
 // TODO: this does not escape/unescape special characters, but it should.
 export function absolutePathToFileUrl(absolutePath: string): string | undefined {
   try {
@@ -180,4 +208,23 @@ export function platformPathToPreferredCase(p: string | undefined): string | und
 export function platformPathToPreferredCase(p: string | undefined): string | undefined {
   if (p && process.platform === 'win32' && p[1] === ':') return p[0].toUpperCase() + p.substring(1);
   return p;
+}
+
+/**
+ * Remove a slash of any flavor from the end of the path
+ */
+export function stripTrailingSlash(aPath: string): string {
+  return aPath
+      .replace(/\/$/, '')
+      .replace(/\\$/, '');
+}
+
+function normalizeIfFSIsCaseInsensitive(urlOrPath: string): string {
+    return isWindowsFilePath(urlOrPath)
+        ? urlOrPath.toLowerCase()
+        : urlOrPath;
+}
+
+function isWindowsFilePath(candidate: string): boolean {
+    return !!candidate.match(/[A-z]:[\\\/][^\\\/]/);
 }

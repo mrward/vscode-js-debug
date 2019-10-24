@@ -252,11 +252,19 @@ export class BreakpointManager {
           breakpoint.updateForSourceMap(this._thread!, script);
       }
     };
-    if (sourceContainer.rootPath)
+    if (sourceContainer.rootPath) {
       this._breakpointsPredictor = new BreakpointsPredictor(sourceContainer.rootPath, sourceContainer.sourcePathResolver);
+    }
   }
 
-  setThread(thread: Thread) {
+  /**
+   * Returns breakpoints by the script ID they're in.
+   */
+  public getByRef(ref: number) {
+    return this._byRef.get(ref);
+  }
+
+  public async setThread(thread: Thread): Promise<void> {
     this._thread = thread;
     this._thread.cdp().Debugger.on('breakpointResolved', event => {
       const breakpoint = this._resolvedBreakpoints.get(event.breakpointId);
@@ -275,11 +283,15 @@ export class BreakpointManager {
       }
       return sources;
     });
+
+    let todo: Promise<void>[] = [];
     for (const breakpoints of this._byPath.values())
-      breakpoints.forEach(b => b.set(thread));
+      todo.push(...breakpoints.map(b => b.set(thread)));
     for (const breakpoints of this._byRef.values())
-      breakpoints.forEach(b => b.set(thread));
-    this._updateSourceMapHandler();
+      todo.push(...breakpoints.map(b => b.set(thread)));
+    todo.push(this._updateSourceMapHandler());
+
+    await Promise.all(todo);
   }
 
   launchBlocker(): Promise<void> {
@@ -294,7 +306,7 @@ export class BreakpointManager {
     this._predictorDisabledForTest = disabled;
   }
 
-  async _updateSourceMapHandler() {
+  private async _updateSourceMapHandler() {
     if (!this._thread)
       return;
     // TODO: disable pausing before source map with a setting or unconditionally.

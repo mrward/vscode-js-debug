@@ -251,6 +251,12 @@ export interface INodeAttachConfiguration extends INodeBaseConfiguration {
   processId?: string;
 }
 
+export const enum BreakOnLoadStrategy {
+  Instrument = 'instrument',
+  Regex = 'regex',
+  Off = 'off'
+}
+
 export interface IChromeLaunchConfiguration extends IChromeBaseConfiguration {
   request: 'launch';
 
@@ -264,7 +270,7 @@ export interface IChromeLaunchConfiguration extends IChromeBaseConfiguration {
   /**
    * The strategy to use for breakOnLoad.
    */
-  breakOnLoadStrategy: 'instrument' | 'regex' | 'off';
+  breakOnLoadStrategy: BreakOnLoadStrategy;
 
   /**
    * Optional working directory for the runtime executable.
@@ -389,7 +395,7 @@ export const chromeLaunchConfigDefaults: IChromeLaunchConfiguration = {
   type: Contributions.ChromeDebugType,
   request: 'launch',
   breakOnLoad: true,
-  breakOnLoadStrategy: 'instrument',
+  breakOnLoadStrategy: BreakOnLoadStrategy.Instrument,
   cwd: null,
   file: null,
   env: {},

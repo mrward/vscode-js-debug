@@ -9,9 +9,7 @@ import { createServer } from 'http-server';
 import * as testSetup from './testSetup';
 import { HttpOrHttpsServer } from './types/server';
 import { ExtendedDebugClient } from './testSupport/debugClient';
-import { IChromeLaunchConfiguration } from '../configuration';
-
-type BreakOnLoadStrategy = IChromeLaunchConfiguration['breakOnLoadStrategy'];
+import { IChromeLaunchConfiguration, BreakOnLoadStrategy } from '../configuration';
 
 function runCommonTests(breakOnLoadStrategy: BreakOnLoadStrategy) {
   const DATA_ROOT = testSetup.DATA_ROOT;
@@ -295,17 +293,19 @@ suite.skip('BreakOnLoad', () => {
   const DATA_ROOT = testSetup.DATA_ROOT;
 
   suite('Regex Common Tests', () => {
-    runCommonTests('regex');
+    runCommonTests(BreakOnLoadStrategy.Regex);
   });
 
   suite('Instrument Common Tests', () => {
-    runCommonTests('instrument');
+    runCommonTests(BreakOnLoadStrategy.Instrument);
   });
 
   suite('Instrument Webpack Project', () => {
     let dc: ExtendedDebugClient;
     setup(function() {
-      return testSetup.setup(this, { breakOnLoadStrategy: 'instrument' }).then(_dc => (dc = _dc));
+      return testSetup
+        .setup(this, { breakOnLoadStrategy: BreakOnLoadStrategy.Instrument })
+        .then(_dc => (dc = _dc));
     });
 
     let server: any;
@@ -384,7 +384,9 @@ suite.skip('BreakOnLoad', () => {
   suite('BreakOnLoad Disabled (strategy: off)', () => {
     let dc: ExtendedDebugClient;
     setup(function() {
-      return testSetup.setup(this, { breakOnLoadStrategy: 'off' }).then(_dc => (dc = _dc));
+      return testSetup
+        .setup(this, { breakOnLoadStrategy: BreakOnLoadStrategy.Off })
+        .then(_dc => (dc = _dc));
     });
 
     let server: any;

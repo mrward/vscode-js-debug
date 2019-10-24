@@ -232,6 +232,7 @@ export class SourceContainer {
   private _sourceByReference: Map<number, Source> = new Map();
   private _sourceMapSourcesByUrl: Map<string, Source> = new Map();
   private _sourceByAbsolutePath: Map<string, Source> = new Map();
+  private _sourceByScriptId: Map<string, Source[]> = new Map();
 
   // All source maps by url.
   _sourceMaps: Map<string, SourceMapData> = new Map();
@@ -270,6 +271,15 @@ export class SourceContainer {
   setBlackboxRegex(blackboxRegex?: RegExp) {
     console.assert(!this._sourceByReference.size);
     this._blackboxRegex = blackboxRegex;
+  }
+
+  public getSourcesForScriptId(scriptId: string): ReadonlyArray<Source> {
+    return this._sourceByScriptId.get(scriptId) || [];
+  }
+
+  public associateSourceWithScriptId(scriptId: string, source: Source) {
+    const items = this.getSourcesForScriptId(scriptId);
+    this._sourceByScriptId.set(scriptId, [...items, source]);
   }
 
   async loadedSources(): Promise<Dap.Source[]> {

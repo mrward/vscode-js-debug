@@ -6,6 +6,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as childProcess from 'child_process';
 import { removeNulls } from './objUtils';
+import { escapeRegexSpecialChars } from './stringUtils';
+import { isValidUrl } from './urlUtils';
 
 /*
  * Lookup the given program on the PATH and return its absolute path on success and undefined otherwise.
@@ -142,4 +144,57 @@ export function forceForwardSlashes(aUrl: string): string {
   return aUrl
     .replace(/\\\//g, '/') // Replace \/ (unnecessarily escaped forward slash)
     .replace(/\\/g, '/');
+}
+
+/**
+ * Return a regex for the given path to set a breakpoint on
+ */
+export function pathToRegex(aPath: string): string {
+  const fileUrlPrefix = 'file:///';
+  const isFileUrl = aPath.startsWith(fileUrlPrefix);
+  const isAbsolutePath = path.isAbsolute(aPath);
+  if (isFileUrl) {
+    // Purposely avoiding fileUrlToPath/pathToFileUrl for this, because it does decodeURI/encodeURI
+    // for special URL chars and I don't want to think about that interacting with special regex chars.
+    // Strip file://, process as a regex, then add file: back at the end.
+    aPath = aPath.substr(fileUrlPrefix.length);
+  }
+
+  if (isValidUrl(aPath) || isFileUrl || !isAbsolutePath) {
+    aPath = escapeRegexSpecialChars(aPath);
+  } else {
+    const escapedAPath = escapeRegexSpecialChars(aPath);
+    aPath = `${escapedAPath}|${escapeRegexSpecialChars(pathToFileURL(aPath))}`;
+  }
+
+  aPath = aPath.replace(/[a-zA-Z]/g, letter => `[${letter.toLowerCase()}${letter.toUpperCase()}]`);
+
+  if (isFileUrl) {
+    aPath = escapeRegexSpecialChars(fileUrlPrefix) + aPath;
+  }
+
+  return aPath;
+}
+
+/**
+ * Convert a local path to a file URL, like
+ * C:/code/app.js => file:///C:/code/app.js
+ * /code/app.js => file:///code/app.js
+ * \\code\app.js => file:///code/app.js
+ */
+export function pathToFileURL(_absPath: string, normalize?: boolean): string {
+  let absPath = forceForwardSlashes(_absPath);
+  if (normalize) {
+    absPath = path.normalize(absPath);
+    absPath = forceForwardSlashes(absPath);
+  }
+
+  const filePrefix = _absPath.startsWith('\\\\')
+    ? 'file:/'
+    : absPath.startsWith('/')
+    ? 'file://'
+    : 'file:///';
+
+  absPath = filePrefix + absPath;
+  return encodeURI(absPath);
 }

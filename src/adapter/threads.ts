@@ -16,6 +16,7 @@ import { VariableStore, VariableStoreDelegate } from './variables';
 import * as sourceUtils from '../common/sourceUtils';
 import { InlineScriptOffset } from '../common/sourcePathResolver';
 import { AnyLaunchConfiguration, OutputSource } from '../configuration';
+import { BreakOnLoadHelper } from './breakOnLoadHelper';
 
 const localize = nls.loadMessageBundle();
 
@@ -824,6 +825,8 @@ export class Thread implements VariableStoreDelegate {
 
     const script = { url: event.url, scriptId: event.scriptId, source, hash: event.hash };
     this._scripts.set(event.scriptId, script);
+    this._sourceContainer.associateSourceWithScriptId(event.scriptId, source);
+
     if (!source[kScriptsSymbol])
       source[kScriptsSymbol] = new Set();
     source[kScriptsSymbol].add(script);

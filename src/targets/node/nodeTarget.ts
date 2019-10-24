@@ -33,7 +33,7 @@ export class NodeTarget implements Target {
     public readonly connection: Connection,
     cdp: Cdp.Api,
     targetInfo: Cdp.Target.TargetInfo,
-    args: AnyNodeConfiguration,
+    private readonly args: AnyNodeConfiguration,
   ) {
     this.connection = connection;
     this._cdp = cdp;
