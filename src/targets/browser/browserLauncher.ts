@@ -17,6 +17,7 @@ import { Contributions } from '../../common/contributionUtils';
 import { EnvironmentVars } from '../../common/environmentVars';
 import { ScriptSkipper } from '../../adapter/scriptSkipper';
 import { RawTelemetryReporterToDap, RawTelemetryReporter } from '../../telemetry/telemetryReporter';
+import { createTargetFilterForConfig } from '../../common/urlUtils';
 
 const localize = nls.loadMessageBundle();
 
@@ -24,8 +25,6 @@ export class BrowserLauncher implements Launcher {
   private _connectionForTest: CdpConnection | undefined;
   private _storagePath: string;
   private _targetManager: BrowserTargetManager | undefined;
-  private _launchParams: IChromeLaunchConfiguration | undefined;
-  private _mainTarget?: BrowserTarget;
   private _disposables: Disposable[] = [];
   private _onTerminatedEmitter = new EventEmitter<IStopMetadata>();
   readonly onTerminated = this._onTerminatedEmitter.event;
@@ -101,7 +100,6 @@ export class BrowserLauncher implements Launcher {
       this._onTerminatedEmitter.fire({ code: 0, killed: true });
     }, undefined, this._disposables);
     this._connectionForTest = connection;
-    this._launchParams = params;
 
     const pathResolver = new BrowserSourcePathResolver({
       baseUrl: baseURL(params),
@@ -110,40 +108,53 @@ export class BrowserLauncher implements Launcher {
       webRoot: params.webRoot || params.rootPath,
       sourceMapOverrides: params.sourceMapPathOverrides,
     });
-    this._targetManager = await BrowserTargetManager.connect(connection, pathResolver, targetOrigin);
-    if (!this._targetManager)
+    const tm = this._targetManager = await BrowserTargetManager.connect(connection, pathResolver, targetOrigin);
+    if (!tm)
       return localize('error.unableToAttachToBrowser', 'Unable to attach to the browser');
 
-    this._targetManager.serviceWorkerModel.onDidChange(() => this._onTargetListChangedEmitter.fire());
-    this._targetManager.frameModel.onFrameNavigated(() => this._onTargetListChangedEmitter.fire());
-    this._disposables.push(this._targetManager);
+    tm.serviceWorkerModel.onDidChange(() => this._onTargetListChangedEmitter.fire());
+    tm.frameModel.onFrameNavigated(() => this._onTargetListChangedEmitter.fire());
+    this._disposables.push(tm);
 
-    this._targetManager.onTargetAdded((target: BrowserTarget) => {
+    tm.onTargetAdded((target: BrowserTarget) => {
       this._onTargetListChangedEmitter.fire();
     });
-    this._targetManager.onTargetRemoved((target: BrowserTarget) => {
+    tm.onTargetRemoved((target: BrowserTarget) => {
       this._onTargetListChangedEmitter.fire();
     });
 
     if (params.skipFiles) {
-      this._targetManager.setSkipFiles(new ScriptSkipper(params.skipFiles));
+      tm.setSkipFiles(new ScriptSkipper(params.skipFiles));
     }
 
-    // Note: assuming first page is our main target breaks multiple debugging sessions
-    // sharing the browser instance. This can be fixed.
-    this._mainTarget = await this._targetManager.waitForMainTarget();
-    if (!this._mainTarget)
-      return localize('error.threadNotFound', 'Target page not found');
-    this._targetManager.onTargetRemoved((target: BrowserTarget) => {
-      if (target === this._mainTarget)
-        this._onTerminatedEmitter.fire({ code: 0, killed: true });
-    });
-    return this._mainTarget;
-  }
+    tm.listenForTargets(
+      createTargetFilterForConfig(params),
+      (params as any).skipNavigateForTest || !params.url ? undefined : params.url,
+    );
 
-  async finishLaunch(mainTarget: BrowserTarget): Promise<void> {
-    if (this._launchParams!.url && !(this._launchParams as any)['skipNavigateForTest'])
-      await mainTarget.cdp().Page.navigate({ url: this._launchParams!.url });
+    const mainTarget = await new Promise<BrowserTarget | null>(resolve => {
+      const timeout = setTimeout(() => {
+        resolve(null);
+        listener.dispose();
+      }, params.timeout);
+
+      const listener = tm.onTargetAdded(target => {
+        resolve(target);
+        listener.dispose();
+        clearTimeout(timeout);
+      });
+    })
+
+    if (!mainTarget) {
+      return localize(
+        'chrome.attach.noMatchingTarget',
+        'Can\'t find a valid target that matches {0} within {1}ms',
+        params.urlFilter || params.url,
+        params.timeout,
+      );
+    }
+
+    return mainTarget;
   }
 
   async launch(params: AnyChromeConfiguration, targetOrigin: any, telemetryReporter: RawTelemetryReporterToDap): Promise<LaunchResult> {
@@ -154,13 +165,12 @@ export class BrowserLauncher implements Launcher {
     const targetOrError = await this.prepareLaunch(params, targetOrigin, telemetryReporter);
     if (typeof targetOrError === 'string')
       return { error: targetOrError };
-    await this.finishLaunch(targetOrError);
-    return { blockSessionTermination: true };
+
+      return { blockSessionTermination: true };
   }
 
   async terminate(): Promise<void> {
-    if (this._mainTarget)
-      this._mainTarget.cdp().Page.navigate({ url: 'about:blank' });
+    // no-op
   }
 
   async disconnect(): Promise<void> {
@@ -169,12 +179,11 @@ export class BrowserLauncher implements Launcher {
   }
 
   async restart(): Promise<void> {
-    if (!this._mainTarget)
-      return;
-    if (this._launchParams!.url)
-      await this._mainTarget.cdp().Page.navigate({ url: this._launchParams!.url });
-    else
-      await this._mainTarget.cdp().Page.reload({ });
+    if (this._targetManager) {
+      for (const target of this._targetManager.targetList()) {
+        target.restart();
+      }
+    }
   }
 
   targetList(): Target[] {

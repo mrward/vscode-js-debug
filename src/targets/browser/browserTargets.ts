@@ -71,27 +71,67 @@ export class BrowserTargetManager implements Disposable {
     await this._browser.Browser.close({});
   }
 
-  waitForMainTarget(): Promise<BrowserTarget | undefined> {
-    let callback: (result: BrowserTarget | undefined) => void;
-    const promise = new Promise<BrowserTarget | undefined>(f => callback = f);
+  /**
+   * Starts listening and attaching to targets which match the
+   * given filter function. Optionally, navigates the first
+   * target to the requested URL (useful in launch scenarios).
+   */
+  public listenForTargets(
+    filter: (t: Cdp.Target.TargetInfo) => boolean,
+    navigateFirstTarget?: string,
+  ) {
+    let navigatedTargetId: string | undefined;
     this._browser.Target.setDiscoverTargets({ discover: true });
-    this._browser.Target.on('targetCreated', async event => {
-      if (this._targets.size)
-        return;
-      const targetInfo = event.targetInfo;
-      if (targetInfo.type !== 'page')
-        return;
-      const response = await this._browser.Target.attachToTarget({ targetId: targetInfo.targetId, flatten: true });
-      if (!response) {
-        callback(undefined);
+
+    this._browser.Target.on('targetCreated', async ({ targetInfo }) => {
+      const attach = filter(targetInfo);
+      if (targetInfo.type !== 'page' || (!attach && !navigateFirstTarget)) {
         return;
       }
-      callback(this._attachedToTarget(targetInfo, response.sessionId, true));
+
+      const response = await this._browser.Target.attachToTarget({
+        targetId: targetInfo.targetId,
+        flatten: true,
+      });
+
+      if (!response) {
+        return;
+      }
+
+      const target = this._attachedToTarget(targetInfo, response.sessionId, true);
+      if (navigateFirstTarget) {
+        navigatedTargetId = targetInfo.targetId;
+        target.cdp().Page.navigate({ url: navigateFirstTarget });
+        navigateFirstTarget = undefined;
+      }
     });
+
+    this._browser.Target.on('targetInfoChanged', async ({ targetInfo }) => {
+      const attach = targetInfo.type === 'page' && filter(targetInfo);
+      const target = this._targets.get(targetInfo.targetId);
+      if (target && attach) {
+        target._updateFromInfo(targetInfo);
+      } else if (target && !attach) {
+        if (targetInfo.targetId !== navigatedTargetId) {
+          this._detachedFromTarget(targetInfo.targetId);
+        }
+      } else if (!target && attach) {
+        const response = await this._browser.Target.attachToTarget({
+          targetId: targetInfo.targetId,
+          flatten: true,
+        });
+
+        if (response) {
+          this._attachedToTarget(targetInfo, response.sessionId, true);
+        }
+      }
+    });
+
     this._browser.Target.on('detachedFromTarget', event => {
-      this._detachedFromTarget(event.targetId!);
+      if (event.targetId) {
+        this._detachedFromTarget(event.targetId);
+      }
     });
-    return promise;
   }
 
   _attachedToTarget(targetInfo: Cdp.Target.TargetInfo, sessionId: Cdp.Target.SessionID, waitingForDebugger: boolean, parentTarget?: BrowserTarget): BrowserTarget {

@@ -239,12 +239,14 @@ interface IChromeBaseConfiguration extends IBaseConfiguration {
 
   /**
    * Will search for a tab with this exact url and attach to it, if found.
+   * If neither this nor the `urlFilter` is present, we'll attach to all pages.
    */
   url: string;
 
   /**
    * Will search for a page with this url and attach to it, if found.
-   * Can have * wildcards.
+   * Can have * wildcards. If neither this nor the `url` is present,
+   * we'll attach to all pages.
    */
   urlFilter: string;
 }
