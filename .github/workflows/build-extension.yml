@@ -1,0 +1,36 @@
+name: Build Extension
+on:
+  pull_request:
+    types: [edited, created]
+  push:
+    branches:
+    - master
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v1
+          with:
+            node-version: '12.x'
+
+      - name: Checkout
+        uses: actions/checkout@master
+
+      - name: Install
+        run: npm ci
+
+      - name: Build Prefixed
+        run: npm run compile
+
+      - uses: actions/upload-artifact@master
+        with:
+          name: node-debug3-prefixed.vsix
+          path: out/node-debug3.vsix
+
+      - name: Build Drop-In
+        run: npm run compile -- --drop-in
+
+      - uses: actions/upload-artifact@master
+        with:
+          name: node-debug3-drop-in.vsix
+          path: out/node-debug3.vsix
