@@ -90,8 +90,9 @@ export class TerminalProcess implements IProgram {
   private loop?: { timer: NodeJS.Timer; processId: number };
 
   constructor(private readonly terminalResult: Dap.RunInTerminalResult) {
-    if (terminalResult.processId) {
-      this.startPollLoop(terminalResult.processId);
+    const pollProcessId = terminalResult.processId || terminalResult.shellProcessId;
+    if (pollProcessId) {
+      this.startPollLoop(pollProcessId);
     }
   }
 
